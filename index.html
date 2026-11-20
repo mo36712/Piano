@@ -35,6 +35,7 @@ h1{font-size:1.7rem;margin:0;letter-spacing:-.02em;font-style:italic}
 #whites{display:flex;height:100%}
 .w{flex:1;background:linear-gradient(#fdfcf8,#e2ddcf);border-right:1px solid #8d8677;border-radius:0 0 6px 6px;display:flex;align-items:flex-end;justify-content:center;padding-bottom:5px;font:10px system-ui,sans-serif;color:#7b7566;overflow:hidden;transition:background .1s,box-shadow .1s}
 .b{position:absolute;top:0;height:62%;background:linear-gradient(#3b3d4a,#0a0b10);border-radius:0 0 4px 4px;z-index:2;box-shadow:1px 3px 5px #0009;transition:background .1s}
+.w.hr{background:linear-gradient(#fdfcf8,#8fdcff)}.b.hr{background:linear-gradient(#3b6f8a,#10222c)}
 .tgt{background:var(--hc)!important;box-shadow:0 0 16px var(--hc)}
 .ok{background:#3ddc84!important;box-shadow:0 0 16px #3ddc84}
 .big{display:flex;gap:10px;align-items:center;flex-wrap:wrap;min-height:44px}
@@ -65,9 +66,9 @@ label{font-family:system-ui,sans-serif;font-size:.92rem}
 <div class="card stage" id="fsbox"><button class="fsb" id="fs">⛶ Vollbild</button><div id="fsbar"><div id="req2" class="big"></div><button class="main" id="start2">Start</button><button id="fsx" style="margin-left:auto">Beenden</button></div><div class="scroll" id="sc"><div id="stage"><canvas id="cv"></canvas><div id="piano"><div id="whites"></div></div></div></div></div>
 
 <div class="card">
-  <div class="big"><div id="req" class="big"></div><div class="prg" id="prg"></div></div>
+  <div class="big"><div id="req" class="big"></div><div class="prg"><span id="cmb"></span> <span id="prg"></span></div></div>
   <div class="lvl"><i id="lvl"></i></div>
-  <div id="msg"></div>
+  <div id="msg"></div><div class="hint" id="hrd" style="margin-top:2px"></div>
   <div class="row">
     <button class="main" id="start">Start</button>
     <button id="reset">Von vorn</button>
@@ -91,7 +92,8 @@ label{font-family:system-ui,sans-serif;font-size:.92rem}
     <summary>Einstellungen</summary>
     <div class="row"><input type="checkbox" id="oct" checked><label for="oct">Oktave egal (zählt in jeder Oktave)</label></div>
     <div class="row"><input type="checkbox" id="de" checked><label for="de">Deutsche Notennamen (H statt B)</label></div>
-    <div class="row"><label for="sens">Empfindlichkeit</label><input type="range" id="sens" min="6" max="22" value="16"></div>
+    <div class="row"><label>Abschnitt: Schritt <input type="number" id="la" value="1" min="1" style="width:4.5em"> bis <input type="number" id="lb" value="" min="1" style="width:4.5em"></label><input type="checkbox" id="lp"><label for="lp">wiederholen</label></div>
+    <div class="row"><label for="sens">Empfindlichkeit</label><input type="range" id="sens" min="6" max="22" value="18"></div>
     <div class="row"><button id="midi">Digitalpiano per MIDI verbinden</button></div>
     <div class="hint">Mit einem Digitalpiano (USB) ist die Erkennung am sichersten.</div>
   </details>
@@ -169,37 +171,53 @@ function hit(m){var t=Date.now();pm[m]=t;pcm[m%12]=t}
 piano.addEventListener('pointerdown',function(e){var t=e.target.closest('[data-m]');if(t){tone(+t.dataset.m);hit(+t.dataset.m)}});
 $('midi').onclick=function(){if(!navigator.requestMIDIAccess){say('Dieser Browser unterstützt kein MIDI. Am Computer geht es mit Chrome oder Edge.','var(--bad)');return}
 navigator.requestMIDIAccess().then(function(a){var n=0;a.inputs.forEach(function(i){n++;i.onmidimessage=function(e){var d=e.data;if((d[0]&0xf0)===0x90&&d[2]>0)hit(d[1])}});say(n?'Digitalpiano verbunden.':'Kein MIDI-Gerät gefunden.',n?'var(--ok)':'var(--bad)')}).catch(function(){say('MIDI-Zugriff wurde nicht erlaubt.','var(--bad)')})};
-// Hören: Spektrum prüfen, ob die verlangten Töne klingen
-function margin(m){var f=440*Math.pow(2,(m-69)/12);if(f<110)f*=2;var bw=ac.sampleRate/an.fftSize,a=Math.max(1,Math.floor(f*.971/bw)),b=Math.ceil(f*1.03/bw),pk=-200,i;
-for(i=a;i<=b;i++)if(fd[i]>pk)pk=fd[i];var ra=Math.max(1,Math.floor(f*.75/bw)),rb=Math.min(fd.length-1,Math.ceil(f*1.33/bw)),s=0;for(i=ra;i<=rb;i++)s+=fd[i];return pk-s/(rb-ra+1)}
-function analyze(s,now){var T=30-$('sens').value,egal=$('oct').checked;s.notes.forEach(function(n){var mg=-99,c=egal?[n.m-12,n.m,n.m+12]:[n.m];c.forEach(function(x){if(x>=21&&x<=108)mg=Math.max(mg,margin(x))});
-var e=st[n.m]||(st[n.m]={min:999,t:0});e.min=Math.min(e.min,mg);if(mg>T&&mg>e.min+6)e.t=now})}
-var td=null,hist=[],lastOn=0,armed=false,winEnd=0;
-function present(x0,T,egal,ex){var c=egal?[x0-12,x0,x0+12]:[x0];for(var j=0;j<c.length;j++){var x=c[j];if(x<21||x>108)continue;var mg=margin(x);if(mg<=T)continue;var bad=false;[12,19,24].forEach(function(d){var y=x-d;if(y>=21&&!ex[y]){var my=margin(y);if(my>T&&my>mg+3)bad=true}});if(!bad)return true}return false}
-function micTick(now){an.getFloatTimeDomainData(td);var n=td.length,r=0,i;for(i=n-1024;i<n;i++)r+=td[i]*td[i];r=Math.sqrt(r/1024);$('lvl').style.width=Math.min(100,r*500)+'%';
-var sens=+$('sens').value,thr=0.004+(22-sens)*0.0008,mn=Math.min.apply(0,hist);
-if(hist.length>=3&&r>thr&&r>mn*1.8+0.003&&now-lastOn>120){lastOn=now;if(active&&steps[idx]){armed=true;winEnd=now+900}}
-hist.push(r);if(hist.length>3)hist.shift();
-if(!active||!steps[idx]||!armed)return;
-if(now>winEnd){armed=false;st={};say('Nicht erkannt. Spiel die leuchtenden Tasten noch einmal.','var(--mut)');return}
-if(now<lastOn+140)return;
-an.getFloatFrequencyData(fd);var s=steps[idx],T=30-sens,egal=$('oct').checked,ex={};s.notes.forEach(function(x){ex[x.m]=1});
-s.notes.forEach(function(x){if(present(x.m,T,egal,ex))st[x.m]={t:now}})}
+// Hören: alle 88 Tasten prüfen, welche gerade klingen
+//DET-START
+function estNotes(cur,bg,sr,N,E,exp){var bw=sr/N,L=cur.length,ex=new Float32Array(L),i,c=0,t=0,m,h,it,out=[],first=0;
+for(i=1;i<L;i++)ex[i]=cur[i]-bg[i];var ex0=Float32Array.from(ex);
+for(i=Math.floor(150/bw);i<Math.floor(4000/bw);i++){t++;if(ex[i]>10)c++}
+if(c>t*.3)return {n:[],flat:true};
+function hf(f,h){return f*h*(1+.0004*h*h)}
+function pk(f,A){A=A||ex;var a=Math.max(1,Math.floor(f*.98/bw)),b=Math.min(L-1,Math.max(a,Math.ceil(f*1.02/bw))),p=-99;for(var j=a;j<=b;j++)if(A[j]>p)p=A[j];return p}
+for(it=0;it<6;it++){var best=0,bm=-1;
+for(m=21;m<=108;m++){var f=440*Math.pow(2,(m-69)/12),lo=f<110?2:1;if(hf(f,lo)>sr*.45)continue;if(pk(hf(f,lo))<E)continue;if(lo===2&&pk(hf(f,3))<E*.7)continue;
+var s=0,k=0;for(h=lo;h<=6;h++){var q=hf(f,h);if(q>sr*.45)break;var e=pk(q);if(e>E*.6){s+=Math.min(e,40)*(h<3?1:.7);k++}}
+if((k>=2||(f>1000&&pk(f)>=E+12))&&s>best){best=s;bm=m}}
+if(bm<0||(it>0&&best<first*.35))break;if(it===0)first=best;out.push(bm);var f0=440*Math.pow(2,(bm-69)/12);
+for(h=1;h<=16;h++){var q=hf(f0,h);if(q>sr*.45)break;var a=Math.floor(q*.96/bw),b=Math.ceil(q*1.04/bw);for(i=Math.max(1,a);i<=b&&i<L;i++)ex[i]=-99}}
+(exp||[]).forEach(function(e){if(out.indexOf(e)>=0)return;for(var q=0;q<out.length;q++)if(exp.indexOf(out[q])>=0&&[12,19,24].indexOf(e-out[q])>=0&&pk(hf(440*Math.pow(2,(e-69)/12),1),ex0)>=E+4){out.push(e);return}});
+return {n:out,flat:false}}
+//DET-END
+var td=null,hist=[],onT=0,armed=false,snap=null,snapMg=null,advT=0,cnt={},round=1,combo=0,parts=[],lastHv=null,lastMg=null,bg=null,cur=null;
+function cands(m){return($('oct').checked?[m-12,m,m+12]:[m]).filter(function(x){return x>=21&&x<=108})}
 function got(n,now){var e=st[n.m];if(e&&now-e.t<1200)return true;var t=$('oct').checked?pcm[n.m%12]:pm[n.m];return !!t&&now-t<700}
-function tick(){var now=Date.now();
-if(an&&now>ignoreUntil)micTick(now);
+function tick(){var now=Date.now(),sens=+$('sens').value,E=40-sens;
+if(an&&now>ignoreUntil){an.getFloatTimeDomainData(td);var n=td.length,r=0,i;for(i=n-1024;i<n;i++)r+=td[i]*td[i];r=Math.sqrt(r/1024);$('lvl').style.width=Math.min(100,r*500)+'%';
+var thr=0.004+(22-sens)*0.0006,mn=hist.length>=4?Math.min.apply(0,hist):9;if(r>thr&&r>mn*1.5+0.002&&now-onT>90)onT=now;hist.push(r);if(hist.length>4)hist.shift();
+an.getFloatFrequencyData(fd);if(!bg){bg=new Float32Array(fd.length);cur=new Float32Array(fd.length);for(i=0;i<fd.length;i++)bg[i]=Math.max(fd[i],-140)}
+for(i=0;i<fd.length;i++)cur[i]=Math.max(fd[i],-140);
+var est=r>thr*.6?estNotes(cur,bg,ac.sampleRate,an.fftSize,E,active&&steps[idx]?steps[idx].notes.map(function(x){return x.m}):[]):{n:[],flat:false},hv=new Uint8Array(109),nm=[];
+for(i=0;i<fd.length;i++)bg[i]+=(cur[i]-bg[i])*(cur[i]<bg[i]?.2:.004);
+est.n.forEach(function(m){hv[m]=1;if(nm.length<6)nm.push(name(m))});lastHv=hv;
+for(var m=21;m<=108;m++){var k=keys[m];if(k)k.classList.toggle('hr',!!hv[m])}
+$('hrd').textContent=est.flat?'Ich höre: Geräusch (kein Ton)':nm.length?'Ich höre: '+nm.join(' '):'Ich höre: nichts';
+var s0=active&&steps[idx];
+if(s0)s0.notes.forEach(function(x){var hit=false;cands(x.m).forEach(function(c){if(hv[c]&&(!snap||!snap[c]||onT>advT+60))hit=true});cnt[x.m]=hit?(cnt[x.m]||0)+1:0;if(cnt[x.m]>=2)st[x.m]={t:now}})}
 if(!active||!steps[idx])return;var s=steps[idx],all=true,h='';
 s.notes.forEach(function(n){var g=got(n,now);if(!g)all=false;var k=keys[n.m];if(k)k.classList.toggle('ok',g);h+='<span class="rc'+(g?' y':'')+'" style="--hc:'+HC[n.h]+'">'+name(n.m)+(g?' ✓':'')+'</span>'});
 if(h!==lastReq){lastReq=h;$('req').innerHTML=h;$('req2').innerHTML=h}
 if(all)advance()}
-function advance(){var s=steps[idx];s.notes.forEach(function(n){var k=keys[n.m];if(k)k.classList.add('ok')});idx++;st={};pm={};pcm={};lastReq='';armed=false;
-if(idx>=steps.length){active=false;$('req').innerHTML=$('req2').innerHTML='<span class="rc y" style="--hc:#3ddc84">Geschafft! 🎉</span>';$('prg').textContent='';say('Das Stück ist durch.','var(--ok)');setTimeout(clearKeys,900);return}
+function advance(){var s=steps[idx];s.notes.forEach(function(n){var k=keys[n.m];if(k)k.classList.add('ok');for(var q=0;q<14;q++)parts.push({x:kx[n.m]+kw[n.m]/2,y:CH-4,vx:(Math.random()-.5)*3.2,vy:-1-Math.random()*4,l:1,c:HC[n.h]})});
+combo++;$('cmb').textContent=combo>2?'🔥 '+combo:'';snap=lastHv;snapMg=lastMg;advT=Date.now();idx++;st={};pm={};pcm={};cnt={};lastReq='';
+var B=Math.min(steps.length-1,(+$('lb').value||99999)-1),A=Math.max(0,(+$('la').value||1)-1);
+if(idx>B){if($('lp').checked&&A<=B){idx=A;round++;say('Runde '+round+'. Weiter so!','var(--ok)');setTimeout(show,180);return}
+active=false;$('req').innerHTML=$('req2').innerHTML='<span class="rc y" style="--hc:#3ddc84">Geschafft! 🎉</span>';$('prg').textContent='';say('Das Stück ist durch.','var(--ok)');setTimeout(clearKeys,900);return}
 setTimeout(show,180)}
 function startMic(){if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){say('Dieser Browser erlaubt kein Mikrofon. Nutze Digitalpiano (MIDI) oder tippe die Tasten an.','var(--bad)');return}
 ctx();navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false}}).then(function(s){
-var src=ac.createMediaStreamSource(s);an=ac.createAnalyser();an.fftSize=16384;an.smoothingTimeConstant=0;an.minDecibels=-120;an.maxDecibels=-10;fd=new Float32Array(an.frequencyBinCount);td=new Float32Array(an.fftSize);src.connect(an);micOn=true;say('Mikrofon läuft. Der Balken zeigt, was ankommt.','var(--ok)')
+var src=ac.createMediaStreamSource(s);an=ac.createAnalyser();an.fftSize=16384;an.smoothingTimeConstant=.3;an.minDecibels=-120;an.maxDecibels=-10;fd=new Float32Array(an.frequencyBinCount);td=new Float32Array(an.fftSize);src.connect(an);micOn=true;say('Mikrofon läuft. Der Balken zeigt, was ankommt.','var(--ok)')
 }).catch(function(e){say('Mikrofon nicht verfügbar ('+e.name+'). '+(window.top!==window?'Die Seite ist gerade in die App eingebettet und bekommt dort keinen Zugriff. Öffne den Link in Safari oder Chrome als eigene Seite. ':'Erlaube den Mikrofonzugriff in den Browser-Einstellungen. ')+'Alternativ: Digitalpiano per MIDI verbinden oder Tasten antippen.','var(--bad)')})}
-function begin(){if(!steps.length){say('Lade zuerst ein Stück.','var(--bad)');return}idx=0;active=true;st={};pm={};pcm={};lastReq='';armed=false;pos=steps[0].t-1;say('');show();if(!micOn)startMic()}
+function begin(){if(!steps.length){say('Lade zuerst ein Stück.','var(--bad)');return}idx=Math.min(steps.length-1,Math.max(0,(+$('la').value||1)-1));active=true;st={};pm={};pcm={};cnt={};snap=null;combo=0;round=1;$('cmb').textContent='';lastReq='';pos=steps[idx].t-1;say('');show();if(!micOn)startMic()}
 $('start').onclick=begin;$('reset').onclick=begin;
 $('hear').onclick=function(){var s=steps[Math.min(idx,steps.length-1)];if(s)s.notes.forEach(function(n){tone(n.m)})};
 // Fallende Noten
@@ -213,6 +231,7 @@ s.notes.forEach(function(n){var yb=CH-(s.t-pos)*PPS,h=Math.max(n.d*PPS,34),x=kx[
 if(cur){var g=cx.createLinearGradient(0,CH,0,CH-150);g.addColorStop(0,col+'66');g.addColorStop(1,col+'00');cx.fillStyle=g;cx.fillRect(x,CH-150,w,150)}
 cx.shadowColor=col;cx.shadowBlur=cur?16:6;cx.fillStyle=col;cx.globalAlpha=cur?1:Math.max(.4,.85-(s.t-pos)*.1);rr(x,yb-h,w,h-3,5);cx.fill();cx.shadowBlur=0;cx.globalAlpha=1;
 var lb=name(n.m),fz=Math.max(8,Math.min(13,w*.6));cx.fillStyle='#10131f';cx.font='700 '+fz+'px system-ui,sans-serif';cx.textAlign='center';if(w>=fz*lb.length*.62){cx.fillText(lb,x+w/2,yb-6)}else if(w>=fz*.8){cx.save();cx.translate(x+w/2+fz*.35,yb-5);cx.rotate(-Math.PI/2);cx.textAlign='left';cx.fillText(lb,0,0);cx.restore()}})}
+parts=parts.filter(function(q){q.x+=q.vx;q.y+=q.vy;q.vy+=.15;q.l-=.03;if(q.l<=0)return false;cx.globalAlpha=q.l;cx.fillStyle=q.c;cx.fillRect(q.x,q.y,3,3);return true});cx.globalAlpha=1;
 cx.fillStyle='rgba(255,255,255,.5)';cx.fillRect(0,CH-2,cv.width,2)}
 function setFs(on){box.classList.toggle('fs',on);setTimeout(function(){build();show()},250)}
 $('fs').onclick=function(){var f=box.requestFullscreen||box.webkitRequestFullscreen;if(f){try{var p=f.call(box);if(p&&p.catch)p.catch(function(){})}catch(e){}}setFs(true)};
