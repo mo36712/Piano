@@ -174,21 +174,32 @@ function margin(m){var f=440*Math.pow(2,(m-69)/12);if(f<110)f*=2;var bw=ac.sampl
 for(i=a;i<=b;i++)if(fd[i]>pk)pk=fd[i];var ra=Math.max(1,Math.floor(f*.75/bw)),rb=Math.min(fd.length-1,Math.ceil(f*1.33/bw)),s=0;for(i=ra;i<=rb;i++)s+=fd[i];return pk-s/(rb-ra+1)}
 function analyze(s,now){var T=30-$('sens').value,egal=$('oct').checked;s.notes.forEach(function(n){var mg=-99,c=egal?[n.m-12,n.m,n.m+12]:[n.m];c.forEach(function(x){if(x>=21&&x<=108)mg=Math.max(mg,margin(x))});
 var e=st[n.m]||(st[n.m]={min:999,t:0});e.min=Math.min(e.min,mg);if(mg>T&&mg>e.min+6)e.t=now})}
-function got(n,now){var e=st[n.m];if(e&&now-e.t<700)return true;var t=$('oct').checked?pcm[n.m%12]:pm[n.m];return !!t&&now-t<700}
+var td=null,hist=[],lastOn=0,armed=false,winEnd=0;
+function present(x0,T,egal,ex){var c=egal?[x0-12,x0,x0+12]:[x0];for(var j=0;j<c.length;j++){var x=c[j];if(x<21||x>108)continue;var mg=margin(x);if(mg<=T)continue;var bad=false;[12,19,24].forEach(function(d){var y=x-d;if(y>=21&&!ex[y]){var my=margin(y);if(my>T&&my>mg+3)bad=true}});if(!bad)return true}return false}
+function micTick(now){an.getFloatTimeDomainData(td);var n=td.length,r=0,i;for(i=n-1024;i<n;i++)r+=td[i]*td[i];r=Math.sqrt(r/1024);$('lvl').style.width=Math.min(100,r*500)+'%';
+var sens=+$('sens').value,thr=0.004+(22-sens)*0.0008,mn=Math.min.apply(0,hist);
+if(hist.length>=3&&r>thr&&r>mn*1.8+0.003&&now-lastOn>120){lastOn=now;if(active&&steps[idx]){armed=true;winEnd=now+900}}
+hist.push(r);if(hist.length>3)hist.shift();
+if(!active||!steps[idx]||!armed)return;
+if(now>winEnd){armed=false;st={};say('Nicht erkannt. Spiel die leuchtenden Tasten noch einmal.','var(--mut)');return}
+if(now<lastOn+140)return;
+an.getFloatFrequencyData(fd);var s=steps[idx],T=30-sens,egal=$('oct').checked,ex={};s.notes.forEach(function(x){ex[x.m]=1});
+s.notes.forEach(function(x){if(present(x.m,T,egal,ex))st[x.m]={t:now}})}
+function got(n,now){var e=st[n.m];if(e&&now-e.t<1200)return true;var t=$('oct').checked?pcm[n.m%12]:pm[n.m];return !!t&&now-t<700}
 function tick(){var now=Date.now();
-if(an&&now>ignoreUntil){an.getFloatFrequencyData(fd);var bw=ac.sampleRate/an.fftSize,mx=-200;for(var i=Math.floor(100/bw);i<Math.floor(2500/bw);i++)if(fd[i]>mx)mx=fd[i];$('lvl').style.width=Math.max(0,Math.min(100,(mx+95)*2))+'%';if(active&&steps[idx])analyze(steps[idx],now)}
+if(an&&now>ignoreUntil)micTick(now);
 if(!active||!steps[idx])return;var s=steps[idx],all=true,h='';
 s.notes.forEach(function(n){var g=got(n,now);if(!g)all=false;var k=keys[n.m];if(k)k.classList.toggle('ok',g);h+='<span class="rc'+(g?' y':'')+'" style="--hc:'+HC[n.h]+'">'+name(n.m)+(g?' ✓':'')+'</span>'});
 if(h!==lastReq){lastReq=h;$('req').innerHTML=h;$('req2').innerHTML=h}
 if(all)advance()}
-function advance(){var s=steps[idx];s.notes.forEach(function(n){var k=keys[n.m];if(k)k.classList.add('ok')});idx++;st={};pm={};pcm={};lastReq='';
+function advance(){var s=steps[idx];s.notes.forEach(function(n){var k=keys[n.m];if(k)k.classList.add('ok')});idx++;st={};pm={};pcm={};lastReq='';armed=false;
 if(idx>=steps.length){active=false;$('req').innerHTML=$('req2').innerHTML='<span class="rc y" style="--hc:#3ddc84">Geschafft! 🎉</span>';$('prg').textContent='';say('Das Stück ist durch.','var(--ok)');setTimeout(clearKeys,900);return}
 setTimeout(show,180)}
 function startMic(){if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){say('Dieser Browser erlaubt kein Mikrofon. Nutze Digitalpiano (MIDI) oder tippe die Tasten an.','var(--bad)');return}
 ctx();navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false}}).then(function(s){
-var src=ac.createMediaStreamSource(s);an=ac.createAnalyser();an.fftSize=16384;an.smoothingTimeConstant=.4;an.minDecibels=-120;an.maxDecibels=-10;fd=new Float32Array(an.frequencyBinCount);src.connect(an);micOn=true;say('Mikrofon läuft. Der Balken zeigt, was ankommt.','var(--ok)')
+var src=ac.createMediaStreamSource(s);an=ac.createAnalyser();an.fftSize=16384;an.smoothingTimeConstant=0;an.minDecibels=-120;an.maxDecibels=-10;fd=new Float32Array(an.frequencyBinCount);td=new Float32Array(an.fftSize);src.connect(an);micOn=true;say('Mikrofon läuft. Der Balken zeigt, was ankommt.','var(--ok)')
 }).catch(function(e){say('Mikrofon nicht verfügbar ('+e.name+'). '+(window.top!==window?'Die Seite ist gerade in die App eingebettet und bekommt dort keinen Zugriff. Öffne den Link in Safari oder Chrome als eigene Seite. ':'Erlaube den Mikrofonzugriff in den Browser-Einstellungen. ')+'Alternativ: Digitalpiano per MIDI verbinden oder Tasten antippen.','var(--bad)')})}
-function begin(){if(!steps.length){say('Lade zuerst ein Stück.','var(--bad)');return}idx=0;active=true;st={};pm={};pcm={};lastReq='';pos=steps[0].t-1;say('');show();if(!micOn)startMic()}
+function begin(){if(!steps.length){say('Lade zuerst ein Stück.','var(--bad)');return}idx=0;active=true;st={};pm={};pcm={};lastReq='';armed=false;pos=steps[0].t-1;say('');show();if(!micOn)startMic()}
 $('start').onclick=begin;$('reset').onclick=begin;
 $('hear').onclick=function(){var s=steps[Math.min(idx,steps.length-1)];if(s)s.notes.forEach(function(n){tone(n.m)})};
 // Fallende Noten
